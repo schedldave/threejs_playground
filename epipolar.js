@@ -4,8 +4,9 @@
 
 
 // external hosting on cdn.skypack.dev
-import * as THREE from 'https://cdn.skypack.dev/three/build/three.module.js'
-import { OrbitControls } from 'https://cdn.skypack.dev/three/examples/jsm/controls/OrbitControls.js'
+import * as THREE from 'https://cdn.skypack.dev/three@0.130.1/build/three.module.js'
+import { OrbitControls } from 'https://cdn.skypack.dev/three@0.130.1/examples/jsm/controls/OrbitControls.js'
+//import * as THREE from 'three'
 
 // internal (has some problems!)
   // import * as THREE from './libs/three/three.module.js'
@@ -15,13 +16,18 @@ import {Object3DAnnotation as Annotation} from './modules/text.js'
 let stats;
 
 let scene, renderer;
-let text;
 let annotations;
+let toggle = 0.0;
+let clock;
 
-let mouseX = 0,
-  mouseY = 0;
+const mouse = new THREE.Vector2();
+const raycaster = new THREE.Raycaster();
+
+let sceneGeometries = [];
+let intersectionSphere;
 
 let windowWidth, windowHeight;
+const bgColor = new THREE.Color(0.5, 0.5, 0.7);
 
 const views = {
     'overview': {
@@ -29,36 +35,30 @@ const views = {
     bottom: 0,
     width: 1.0,
     height: 1.0,
-    background: new THREE.Color(0.5, 0.5, 0.7),
-    eye: [0, 1800, 1800],
+    background: bgColor,
+    eye: [0, 18, 18],
     up: [0, 1, 0],
     fov: 80,
-    updateCamera: function(camera, scene, mouseX) {
-    }
   },
   'left': {
-    left: 0.75,
-    bottom: 0,
-    width: 0.25,
+    left:   0,
+    bottom: 0.75,
+    width:  0.25,
     height: 0.25,
-    background: new THREE.Color(0.7, 0.5, 0.5),
-    eye: [-1000, 800, 1000],
+    background: bgColor,
+    eye: [-10, 2, 10],
     up: [0, 1, 0],
     fov: 50,
-    updateCamera: function(camera, scene, mouseX) {
-    }
   },
   'right': {
-    left: 0.75,
+    left:   0.75,
     bottom: 0.75,
-    width: 0.25,
+    width:  0.25,
     height: 0.25,
-    background: new THREE.Color(0.5, 0.7, 0.7),
-    eye: [1000, 800, 1000],
+    background: bgColor,
+    eye: [10, 2, 10],
     up: [0, 1, 0],
     fov: 50,
-    updateCamera: function(camera, scene, mouseX) {
-    }
   }};
 
 init();
@@ -68,6 +68,8 @@ function init() {
 
 
   scene = new THREE.Scene();
+
+  clock = new THREE.Clock();
 
   for (const name in views) {
     console.log(name)
@@ -93,6 +95,46 @@ function init() {
   light.position.set(0, 0, 1);
   scene.add(light);
 
+  createScene(scene)
+
+  const sphereGeometry = new THREE.SphereGeometry( 0.1, 32, 32 );
+  const sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
+
+	const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+	scene.add( sphere );
+  intersectionSphere = sphere;
+
+  renderer = new THREE.WebGLRenderer({
+    antialias: true
+  });
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  //container.appendChild( renderer.domElement );
+
+  const controls = new OrbitControls(views['overview'].camera, renderer.domElement);
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  // add annotiations to DOM  
+  annotations= new Array(
+    new Annotation(views['right'].camera, "Right", views['overview'].camera ),
+    new Annotation(views['left'].camera,  "Left",  views['overview'].camera ) );
+
+  // add render canvas to DOM
+  document.body.appendChild(renderer.domElement);
+
+
+  console.log(annotations)
+
+  //stats = new Stats();
+  //container.appendChild( stats.dom );
+
+  document.addEventListener('mousemove', onDocumentMouseMove);
+
+}
+
+function createScene(scene){
+
   // shadow
 
   const canvas = document.createElement('canvas');
@@ -101,7 +143,7 @@ function init() {
 
   const context = canvas.getContext('2d');
   const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
-  gradient.addColorStop(0.1, 'rgba(0,0,0,0.15)');
+  gradient.addColorStop(0.1, 'rgba(0,0,0,0.5)');
   gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
   context.fillStyle = gradient;
@@ -113,74 +155,41 @@ function init() {
     map: shadowTexture,
     transparent: true
   });
-  const shadowGeo = new THREE.PlaneGeometry(300, 300, 1, 1);
+  const shadowGeo = new THREE.PlaneGeometry(4, 4, 1, 1);
 
   let shadowMesh;
 
   shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
-  shadowMesh.position.y = -250;
+  shadowMesh.position.y = -2.5;
   shadowMesh.rotation.x = -Math.PI / 2;
   //scene.add(shadowMesh);
+  const shadowMesh1 = shadowMesh;
 
-  shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
-  shadowMesh.position.x = -400;
-  shadowMesh.position.y = -250;
-  shadowMesh.rotation.x = -Math.PI / 2;
+  shadowMesh = shadowMesh.clone();
+  //shadowMesh.position.x = -4;
   //scene.add(shadowMesh);
+  const shadowMesh2 = shadowMesh;
 
-  shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
-  shadowMesh.position.x = 400;
-  shadowMesh.position.y = -250;
-  shadowMesh.rotation.x = -Math.PI / 2;
+  shadowMesh = shadowMesh.clone();
+  //shadowMesh.position.x = 4.00;
   //scene.add(shadowMesh);
+  const shadowMesh3 = shadowMesh;
 
-  const radius = 200;
+
+  const radius = 2;
 
   const geometry1 = new THREE.IcosahedronGeometry(radius, 1);
 
   const count = geometry1.attributes.position.count;
   geometry1.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
 
-  const geometry2 = geometry1.clone();
-  const geometry3 = geometry1.clone();
-
-  const elem = document.createElement('div');
-  elem.setAttribute('class', 'info')
-  elem.textContent = 'Text';
-  document.body.appendChild(elem);
-  text = elem;
-
-  annotations= new Array(
-    new Annotation(views['right'].camera, "Right", views['overview'].camera ),
-    new Annotation(views['left'].camera,  "Left",  views['overview'].camera ) );
-
-  console.log(annotations)
-
-  const color = new THREE.Color();
-  const positions1 = geometry1.attributes.position;
-  const positions2 = geometry2.attributes.position;
-  const positions3 = geometry3.attributes.position;
-  const colors1 = geometry1.attributes.color;
-  const colors2 = geometry2.attributes.color;
-  const colors3 = geometry3.attributes.color;
-
-  for (let i = 0; i < count; i++) {
-
-    color.setHSL((positions1.getY(i) / radius + 1) / 2, 1.0, 0.5);
-    colors1.setXYZ(i, color.r, color.g, color.b);
-
-    color.setHSL(0, (positions2.getY(i) / radius + 1) / 2, 0.5);
-    colors2.setXYZ(i, color.r, color.g, color.b);
-
-    color.setRGB(1, 0.8 - (positions3.getY(i) / radius + 1) / 2, 0);
-    colors3.setXYZ(i, color.r, color.g, color.b);
-
-  }
+  const geometry2 = new THREE.BoxGeometry(2*radius,2*radius,2*radius);
+  const geometry3 = new THREE.ConeGeometry(2*radius, 5*radius, 10);
 
   const material = new THREE.MeshPhongMaterial({
     color: 0xffffff,
     flatShading: true,
-    vertexColors: true,
+    vertexColors: false,
     shininess: 0
   });
 
@@ -193,45 +202,39 @@ function init() {
   let mesh = new THREE.Mesh(geometry1, material);
   let wireframe = new THREE.Mesh(geometry1, wireframeMaterial);
   mesh.add(wireframe);
-  mesh.position.x = -400;
-  mesh.rotation.x = -1.87;
+  mesh.add(shadowMesh1);
+  mesh.position.x = 3.0;
+  //mesh.rotation.x = -1.87;
   scene.add(mesh);
+
+  sceneGeometries.push(mesh);
 
   mesh = new THREE.Mesh(geometry2, material);
   wireframe = new THREE.Mesh(geometry2, wireframeMaterial);
   mesh.add(wireframe);
-  mesh.position.x = 400;
+  mesh.add(shadowMesh2);
+  mesh.position.x = -3.00;
   scene.add(mesh);
+  sceneGeometries.push(mesh);
+
 
   mesh = new THREE.Mesh(geometry3, material);
   wireframe = new THREE.Mesh(geometry3, wireframeMaterial);
   mesh.add(wireframe);
+  mesh.add(shadowMesh3);
+  mesh.position.fromArray([0,3,-9]);
   scene.add(mesh);
-
-  renderer = new THREE.WebGLRenderer({
-    antialias: true
-  });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  //container.appendChild( renderer.domElement );
-  const new_canvas = document.body.appendChild(renderer.domElement);
-
-  const controls = new OrbitControls(views['overview'].camera, new_canvas);
-  controls.target.set(0, 0, 0);
-  controls.update();
-
-
-  //stats = new Stats();
-  //container.appendChild( stats.dom );
-
-  document.addEventListener('mousemove', onDocumentMouseMove);
+  sceneGeometries.push(mesh);
 
 }
 
 function onDocumentMouseMove(event) {
 
-  mouseX = (event.clientX - windowWidth / 2);
-  mouseY = (event.clientY - windowHeight / 2);
+  // calculate mouse position in normalized device coordinates
+	// (-1 to +1) for both components
+
+	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1; 
 
 }
 
@@ -243,7 +246,6 @@ function updateSize() {
     windowHeight = window.innerHeight;
 
     renderer.setSize(windowWidth, windowHeight);
-
   }
 
 }
@@ -261,12 +263,13 @@ function render() {
 
   updateSize();
 
+
+
+
   for (const name in views) {
     //console.log(name)
     const view = views[name];
     const camera = view.camera;
-
-    view.updateCamera(camera, scene, mouseX, mouseY);
 
     const left = Math.floor(windowWidth * view.left);
     const bottom = Math.floor(windowHeight * view.bottom);
@@ -284,30 +287,89 @@ function render() {
     // render camera helper only when we render the overview view
     views['left'].helper.visible = views['right'].helper.visible = name === 'overview';
 
-      // get the position of the center of the cube
-    const _camera = views['left'].camera;
-    _camera.updateWorldMatrix(true, false);
-    const tempV = new THREE.Vector3();
-    _camera.getWorldPosition(tempV);
-    
-    // get the normalized screen coordinate of that position
-    // x and y will be in the -1 to +1 range with x = -1 being
-    // on the left and y = -1 being on the bottom
-    tempV.project(views['overview'].camera);
-    
-    // convert the normalized position to CSS coordinates
-    const canvas = renderer.domElement;
-    const x = (tempV.x *  .5 + .5) * canvas.clientWidth;
-    const y = (tempV.y * -.5 + .5) * canvas.clientHeight;
-    
-    // move the elem to that position
-    text.style.transform = `translate(-50%, -50%) translate(${x}px,${y}px)`;
-
-    // update text positions, the text is pure HTML positioned with CSS
-    annotations.forEach(function(txt){ txt.update(); });
-
     renderer.render(scene, camera);
-
   }
+
+
+  // update text positions, the text is pure HTML positioned with CSS
+  annotations.forEach(function(txt){ txt.update(); });
+
+
+  
+  // update the picking ray with the camera and mouse position
+  raycaster.setFromCamera( mouse, views['overview'].camera );
+
+  // calculate objects intersecting the picking ray
+  const intersections = raycaster.intersectObjects( sceneGeometries, false );
+  // pick first intersection. should be closest
+  const intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
+
+  // if intersection happened
+  if ( toggle > 0.02 && intersection !== null ) {
+
+    intersectionSphere.position.copy( intersection.point );
+    intersectionSphere.visible = true;
+    
+    toggle = 0;
+
+  } else if (toggle > 0.02 && intersection === null ) {
+    intersectionSphere.visible = false;
+  }
+  toggle += clock.getDelta();
+
+}
+
+matrixTests();
+function matrixTests(){
+  // compare to: https://colab.research.google.com/github/schedldave/cv2021/blob/main/07_Stereo.ipynb#scrollTo=W2BI9XxZIzWc
+
+  // left K
+  const lK = new THREE.Matrix3().fromArray( 
+    [532.79536562,   0.,         342.45825163,
+       0.,         532.91928338, 233.90060514,
+       0.,           0.,           1.00       ]);
+  
+  // right K
+  const rK = new THREE.Matrix3().fromArray(
+       [537.42795336,   0.,         327.6142018, 
+          0.,         536.94702962, 248.88429309,
+          0.,           0.,           1.        ]);
+
+  // relative rotation
+  const R = new THREE.Matrix3().fromArray( 
+    [ 0.99998578,  0.00376589,  0.00377484,
+     -0.00374027,  0.99997007, -0.00677299,
+     -0.00380023,  0.00675878,  0.99996994 ]);
+    
+  // relative translation:
+  const t = new THREE.Vector3( -3.32806101, 0.03738435, 0.01469883 );
+
+  /*
+  essential matrix:   [[-8.70916395e-05 -1.44457207e-02  3.74827819e-02]
+    [ 2.05122175e-03  2.25489852e-02  3.32801645e+00]
+    [-2.49359848e-02 -3.32810218e+00  2.23998201e-02]]
+
+ fundamental matrix:  [[ 4.67950670e-09  7.76000185e-07 -1.25614932e-03]
+    [-1.10312576e-07 -1.21237904e-06 -9.50369062e-02]
+    [ 7.45984809e-04  9.61289558e-02  1.00000000e+00]]
+  */
+
+    // matrix representation of cross product:
+    let tx = new THREE.Matrix3();
+    tx.set(      0, -t.z,  t.y,
+               t.z,    0, -t.x,
+              -t.y,  t.x,    0 );
+    tx.transpose();
+
+  
+
+
+    // compute essential matrix:
+    let E  = new THREE.Matrix3().multiplyMatrices(R,tx);
+    let E_ = new THREE.Matrix3().multiplyMatrices(tx.clone().transpose(),R.clone().transpose()).transpose();
+    console.log({E,E_});
+
+    // looks good! so far!
+
 
 }
