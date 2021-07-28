@@ -6,6 +6,7 @@
 // external hosting on cdn.skypack.dev
 import * as THREE from 'https://cdn.skypack.dev/three@0.130.1/build/three.module.js'
 import { OrbitControls } from 'https://cdn.skypack.dev/three@0.130.1/examples/jsm/controls/OrbitControls.js'
+import { GUI } from 'https://cdn.skypack.dev/three@0.130.1/examples/jsm/libs/dat.gui.module.js'
 //import * as THREE from 'three'
 
 // internal (has some problems!)
@@ -160,10 +161,23 @@ function init() {
     //const material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
     //const plane = new THREE.Mesh( geometry, material );
     //scene.add( plane );
+
+    annotations.push( new Annotation(epiPlane, "Epipolar Plane", views['overview'].camera, true ) );
   }
 
   //stats = new Stats();
   //container.appendChild( stats.dom );
+
+  // user interface with dat.GUI [see https://codepen.io/justgooddesign/pen/sbGLC for a deeper example]
+  const gui = new GUI({name: 'Settings', autoPlace: false});
+  gui.addColor({color: `#${bgColor.getHexString()}`},'color').onChange(function(color){
+    bgColor.set(color);
+  });
+  addCameraGUI( gui, views['left'].camera, 'left camera' );
+  addCameraGUI( gui, views['right'].camera, 'right camera' );
+  gui.open();
+  gui.domElement.id = 'gui';
+  gui_container.appendChild(gui.domElement);
 
   // add event listener
   document.addEventListener('mousemove', onDocumentMouseMove);
@@ -171,6 +185,15 @@ function init() {
 
   // add render canvas to DOM
   document.body.appendChild(renderer.domElement);
+}
+
+function addCameraGUI( gui, camera, name ){
+  const lgui = gui.addFolder(name);
+  for(const sub of ['position','rotation']){
+    const subgui = lgui.addFolder(sub);
+    for(const s of ['x','y','z']){
+      subgui.add(camera[sub], s).listen();
+  } }
 }
 
 function createScene(scene){
@@ -327,7 +350,7 @@ function render() {
     renderer.setViewport(left, bottom, width, height);
     renderer.setScissor(left, bottom, width, height);
     renderer.setScissorTest(true);
-    renderer.setClearColor(view.background);
+    renderer.setClearColor(bgColor);
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -338,9 +361,11 @@ function render() {
     renderer.render(scene, camera);
   }
 
+  // update baseline
+  const points = [ views['right'].camera.position, views['left'].camera.position ];
+  baseline.geometry.setFromPoints( points );   
 
-  // update text positions, the text is pure HTML positioned with CSS
-  annotations.forEach(function(txt){ txt.update(); });
+
 
 
   
@@ -362,17 +387,23 @@ function render() {
     epiPlane.plane.setFromCoplanarPoints( views['right'].camera.position, 
                             views['left'].camera.position, 
                             intersectionSphere.position );
+    epiPlane.visible = true;
     
     toggle = 0;
 
   } else if (toggle > 0.02 && intersection === null ) {
     intersectionSphere.visible = false;
+    epiPlane.visible = false;
   }
   toggle += clock.getDelta();
 
+  
+  // update text positions, the text is pure HTML positioned with CSS
+  annotations.forEach(function(txt){ txt.update(); });
+
 }
 
-matrixTests();
+//matrixTests();
 function matrixTests(){
   // compare to: https://colab.research.google.com/github/schedldave/cv2021/blob/main/07_Stereo.ipynb#scrollTo=W2BI9XxZIzWc
 

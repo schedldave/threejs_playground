@@ -20,7 +20,7 @@ class Object3DAnnotation{
         }
 
         // create html element
-        const elem = document.createElement('div');
+        const elem = document.createElement('h4');
         elem.setAttribute('class', 'info')
         elem.textContent = this.text;
         document.body.appendChild(elem);
@@ -54,7 +54,10 @@ class Object3DAnnotation{
         const canvas = document.body;
         const x = (_v.x *  .5 + .5) * canvas.clientWidth;
         const y = (_v.y * -.5 + .5) * canvas.clientHeight;
-        
+
+        // hide text if obj3D is not visible
+        this.htmlElem.style.display = this.obj3D.visible===false ? 'none' : 'block';
+       
         // move the elem to that position
         this.htmlElem.style.transform = `translate(-50%, -50%) translate(${x}px,${y}px)`;
 

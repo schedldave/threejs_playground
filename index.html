@@ -2,48 +2,36 @@
 <html>
 	<head>
 		<meta charset="utf-8">
-		<title>My first three.js app</title>
+		<title>Epipolar Constraints with three.js</title>
 		<style>
-			body { margin: 0; }
+			@import url(https://fonts.googleapis.com/css?family=Lato:300);
+			body { 
+					margin: 0; 
+					font-family: 'Lato', sans-serif;
+				 }
 			.info 	{
 						position: absolute;
 						text-align: left;
 						z-index: 100;
 						display:block;
 						color: white;
-
+ 						font-weight: 300;
+  						text-shadow: 0px 2px 1px rgba(0, 0, 0, 0.5);
+					}
+			#gui_container{
+						position: absolute;
+						top: 0;
+						left: 50%;
+						height: 0;
+					}
+			#gui	{
+						transform:translate(-50%, 0px);
 					}
 		</style>
 	</head>
 	<body>
 		<script src="epipolar.js" type="module"></script>
-		<!--<script type="module">
-			import * as THREE from 'https://cdn.skypack.dev/three';
-
-			const scene = new THREE.Scene();
-			const camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.1, 1000 );
-
-			const renderer = new THREE.WebGLRenderer();
-			renderer.setSize( window.innerWidth, window.innerHeight );
-			document.body.appendChild( renderer.domElement );
-
-			const geometry = new THREE.BoxGeometry();
-			const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
-			const cube = new THREE.Mesh( geometry, material );
-			scene.add( cube );
-
-			camera.position.z = 5;
-
-			const animate = function () {
-				requestAnimationFrame( animate );
-
-				cube.rotation.x += 0.01;
-				cube.rotation.y += 0.01;
-
-				renderer.render( scene, camera );
-			};
-
-			animate();
-		</script>-->
+		<div id="gui_container"></div> <!-- contains the user interface -->
+		<!-- info and canvas gets appended here by JavaScript -->
 	</body>
 </html>
