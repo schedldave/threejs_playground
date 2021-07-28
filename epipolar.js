@@ -12,6 +12,9 @@ import { OrbitControls } from 'https://cdn.skypack.dev/three@0.130.1/examples/js
   // import * as THREE from './libs/three/three.module.js'
   // import {OrbitControls} from './libs/three/examples/jsm/controls/OrbitControls.js';
 import {Object3DAnnotation as Annotation} from './modules/text.js'
+import {ImagePlaneHelper} from './modules/ImagePlaneHelper.js'
+import {EpiPlaneHelper} from './modules/EpiPlaneHelper.js'
+
 
 let stats;
 
@@ -25,6 +28,12 @@ const raycaster = new THREE.Raycaster();
 
 let sceneGeometries = [];
 let intersectionSphere;
+let epiPlane; // epipolar plane
+
+let persistentIntersectionSphere;
+let persistentEpiPlane; // epipolar plane
+
+let baseline;
 
 let windowWidth, windowHeight;
 const bgColor = new THREE.Color(0.5, 0.5, 0.7);
@@ -74,13 +83,13 @@ function init() {
   for (const name in views) {
     console.log(name)
     const view = views[name];
-    const camera = new THREE.PerspectiveCamera(view.fov, window.innerWidth / window.innerHeight, 1, name==='overview'?100000:100);
+    const camera = new THREE.PerspectiveCamera(view.fov, window.innerWidth / window.innerHeight, .5, name==='overview'?100000:100);
     camera.position.fromArray(view.eye);
     camera.up.fromArray(view.up);
     camera.lookAt(scene.position);
     view.camera = camera;
     if(name==='left' || name==='right'){
-        const helper = new THREE.CameraHelper(camera);
+        const helper = new ImagePlaneHelper(camera);
         console.log(helper.matrix)
 
         view.helper = helper;
@@ -101,6 +110,7 @@ function init() {
   const sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
 
 	const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+  sphere.geometry.position = new THREE.Vector3(0);
 	scene.add( sphere );
   intersectionSphere = sphere;
 
@@ -115,22 +125,52 @@ function init() {
   controls.target.set(0, 0, 0);
   controls.update();
 
-  // add annotiations to DOM  
+  // create annotiations and add to DOM  
   annotations= new Array(
     new Annotation(views['right'].camera, "Right", views['overview'].camera ),
     new Annotation(views['left'].camera,  "Left",  views['overview'].camera ) );
 
-  // add render canvas to DOM
-  document.body.appendChild(renderer.domElement);
 
+  //console.log(annotations)
 
-  console.log(annotations)
+  //console.log(views['overview'].camera.projectionMatrix)
+
+  { // create the baseline between the left and right camera
+    const material = new THREE.LineBasicMaterial({
+      color: 0x0000ff
+    });
+    
+    const points = [];
+    points.push( views['right'].camera.position );
+    points.push( views['left'].camera.position );
+    const geometry = new THREE.BufferGeometry().setFromPoints( points );   
+    baseline = new THREE.Line( geometry, material );
+    scene.add( baseline );
+
+    annotations.push( new Annotation(baseline, "Baseline", views['overview'].camera, true ) );
+  }
+
+  { // create epipolar plane
+    const plane = new THREE.Plane().setFromCoplanarPoints( views['right'].camera.position, 
+                                                        views['left'].camera.position, 
+                                                        intersectionSphere.position );
+    epiPlane = new EpiPlaneHelper( plane, 10, 0xffff00 );
+    scene.add( epiPlane );
+    //const geometry = new THREE.PlaneGeometry( 1, 1 );
+    //const material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
+    //const plane = new THREE.Mesh( geometry, material );
+    //scene.add( plane );
+  }
 
   //stats = new Stats();
   //container.appendChild( stats.dom );
 
+  // add event listener
   document.addEventListener('mousemove', onDocumentMouseMove);
+  document.addEventListener('dblclick', onDocumentDoubleClick);
 
+  // add render canvas to DOM
+  document.body.appendChild(renderer.domElement);
 }
 
 function createScene(scene){
@@ -229,12 +269,20 @@ function createScene(scene){
 }
 
 function onDocumentMouseMove(event) {
-
   // calculate mouse position in normalized device coordinates
 	// (-1 to +1) for both components
-
 	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
 	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1; 
+}
+
+function onDocumentDoubleClick(event){
+  //console.count('double click')
+  if(persistentEpiPlane!==undefined){
+    scene.remove(persistentEpiPlane);
+    persistentEpiPlane.dispose();
+  }
+  persistentEpiPlane = new EpiPlaneHelper(epiPlane.plane.clone(),20, 0xffffff );
+  scene.add(persistentEpiPlane);
 
 }
 
@@ -309,6 +357,11 @@ function render() {
 
     intersectionSphere.position.copy( intersection.point );
     intersectionSphere.visible = true;
+
+    // update epipolar plane
+    epiPlane.plane.setFromCoplanarPoints( views['right'].camera.position, 
+                            views['left'].camera.position, 
+                            intersectionSphere.position );
     
     toggle = 0;
 
@@ -359,17 +412,21 @@ function matrixTests(){
     tx.set(      0, -t.z,  t.y,
                t.z,    0, -t.x,
               -t.y,  t.x,    0 );
-    tx.transpose();
+    tx.transpose(); // needs transpose
 
   
 
 
     // compute essential matrix:
-    let E  = new THREE.Matrix3().multiplyMatrices(R,tx);
+    let E  = new THREE.Matrix3().multiplyMatrices(R,tx); // multiplication order is flipped!
     let E_ = new THREE.Matrix3().multiplyMatrices(tx.clone().transpose(),R.clone().transpose()).transpose();
     console.log({E,E_});
 
     // looks good! so far!
+
+    let F = new THREE.Matrix3().multiplyMatrices(lK.clone().invert(),E).multiply(rK.clone().invert().transpose());
+    console.log({F});
+
 
 
 }
