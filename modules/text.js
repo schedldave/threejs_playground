@@ -1,5 +1,7 @@
 
 import {Object3D,Vector3,Camera} from 'https://cdn.skypack.dev/three@0.130.1/build/three.module.js'
+//import {Object3D,Vector3,Camera} from '../libs/three/three.module.js'
+
 //import * as THREE from 'https://cdn.skypack.dev/three/build/three.module.js'
 
 
