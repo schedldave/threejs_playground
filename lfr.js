@@ -31,6 +31,7 @@ fetchPosesJSON().then(poses => {
   poses; // fetched movies
   console.log(poses);
   if(!('images' in poses)){ console.log( `An error happened when loading JSON poses. Property images is not present.` ); }
+  const positions = new Array();
   for(const pose of poses.images){
     loadImage( imgURL + pose.imagefile );
     // matrix
@@ -40,13 +41,27 @@ fetchPosesJSON().then(poses => {
       M[0][0], M[0][1], M[0][2], M[0][3],
       M[1][0], M[1][1], M[1][2], M[1][3],
       M[2][0], M[2][1], M[2][2], M[2][3],
-            0,       0,       0,       0
+            0,       0,       0,       1
     );
     let pos = new THREE.Vector3(); let quat = new THREE.Quaternion(); let scale = new THREE.Vector3();
     matrix.decompose(pos,quat,scale);
-    console.log( `matrix for image ${pose.imagefile} has p: ${pos.x},${pos.y},${pos.z}, rot: ${quat}, scale: ${scale.x},${scale.y},${scale.z}.`)
+    //console.log( `matrix for image ${pose.imagefile} has p: ${pos.x},${pos.y},${pos.z}, rot: ${quat}, scale: ${scale.x},${scale.y},${scale.z}.`)
+    // console.table(pos)
+    positions.push(pos);
+    // create cameras with the settings
+    const camera = new THREE.PerspectiveCamera(singleImageFov, 1.0, .5, 10000);
+    camera.position.copy( pos );
+    camera.applyQuaternion(quat); // Apply Quaternion
 
+    console.log(camera.matrix)
+    //camera.quaternion.set( quat );
+    const helper = new ImagePlaneHelper(camera);
+    scene.add(helper);
+    console.log(helper.matrix);
+    singleImages.push(camera);
+    scene.add(camera);
   }
+  console.table(positions);
 });
 
 function loadImage(url){
@@ -60,7 +75,7 @@ function loadImage(url){
       const canvas = document.createElement( 'canvas' );
       const context = canvas.getContext( '2d' );
       context.drawImage( image, 0, 0 );
-      document.body.append(canvas);
+      //document.body.append(canvas);
       //console.count( `Image loaded!` );
     },
     // onProgress callback currently not supported
@@ -83,6 +98,7 @@ loader.load(
 	// called when resource is loaded
 	function ( object ) {
     dem = object.children[0];
+    dem.scale.fromArray([1,1,-1]);
     //console.log(dem)
     const material = new THREE.MeshPhongMaterial({
       color: 0xffffff,
@@ -120,6 +136,8 @@ loader.load(
 let stats;
 
 let scene, renderer, dem;
+let singleImages = new Array();
+const singleImageFov = 50; // degrees
 let annotations;
 let toggle = 0.0;
 let clock;
