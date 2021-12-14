@@ -17,17 +17,19 @@ import { Object3DAnnotation as Annotation } from './modules/text.js'
 import { ImagePlaneHelper } from './modules/ImagePlaneHelper.js'
 import { EpiPlaneHelper } from './modules/EpiPlaneHelper.js'
 
+/*
 // # F0 Scene ##
-// const imgURL = "./data/F0/images_ldr/";
-// const poseURL = './data/F0/poses/poses.json';
-// const demURL = './data/F0/DEM/dem.obj';
-// const singleImageFov = 50; // degrees
+const imgURL = "./data/F0/images_ldr/";
+const poseURL = './data/F0/poses/poses.json';
+const demURL = './data/F0/DEM/dem.obj';
+const singleImageFov = 50; // degrees
+*/
 
 
 // # Debug Scene ##
 const imgURL = "./data/debug_scene/";
-const poseURL = './data/debug_scene/poses.json';
-const demURL = './data/plane.obj';
+const poseURL = './data/debug_scene/blender_poses.json';
+const demURL = './data/zero_plane.obj';
 const singleImageFov = 60; // degrees
 
 
@@ -76,12 +78,13 @@ function createProjectiveMaterial(projCamera, tex = null) {
         vec4 texc = projMatrix * cameraMatrix * vWorldPos;
         vec2 uv = texc.xy / texc.w / 2.0 + 0.5;
 
-        vec3 color = ( max( uv.x, uv.y ) <= 1. && min( uv.x, uv.y ) >= 0. ) ? texture(myTexture, uv).rgb:vec3(1.0);
-        gl_FragColor = vec4(baseColor * color, 1.0);
+        vec4 color = ( max( uv.x, uv.y ) <= 1. && min( uv.x, uv.y ) >= 0. ) ? vec4(texture(myTexture, uv).rgb, 1.0) : vec4(0.0);
+        gl_FragColor = color;
 
       }
     `,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    transparent: true
   })
 
   return material;
@@ -100,47 +103,72 @@ async function fetchPosesJSON(url) {
 const imgLoader = new THREE.ImageLoader();
 
 fetchPosesJSON(poseURL).then(poses => {
-  poses; // fetched poses
-  console.log(poses);
+  //poses; // fetched poses
+  //console.log(poses);
   if (!('images' in poses)) { console.log(`An error happened when loading JSON poses. Property images is not present.`); }
   const positions = new Array();
   for (const pose of poses.images) {
 
-    // matrix
-    const M = pose.M3x4
-    let matrix = new THREE.Matrix4();
-    matrix.set(
-      M[0][0], M[0][1], M[0][2], M[0][3],
-      M[1][0], M[1][1], M[1][2], M[1][3],
-      M[2][0], M[2][1], M[2][2], M[2][3],
-      0, 0, 0, 1
-    );
-    matrix = matrix.invert();
+    const useLegacy = !(pose.hasOwnProperty('location') && pose.hasOwnProperty('rotation'));
     let pos = new THREE.Vector3(); let quat = new THREE.Quaternion(); let scale = new THREE.Vector3();
-    matrix.decompose(pos, quat, scale);
-    //console.log( `matrix for image ${pose.imagefile} has p: ${pos.x},${pos.y},${pos.z}, rot: ${quat}, scale: ${scale.x},${scale.y},${scale.z}.`)
-    // console.table(pos)
+
+    if (useLegacy) {
+
+      // matrix
+      const M = pose.M3x4
+      let matrix = new THREE.Matrix4();
+      matrix.set(
+        M[0][0], M[0][1], M[0][2], M[0][3],
+        M[1][0], M[1][1], M[1][2], M[1][3],
+        M[2][0], M[2][1], M[2][2], M[2][3],
+        0, 0, 0, 1
+      );
+      //matrix = matrix.invert();
+      matrix.decompose(pos, quat, scale);
+      //console.log( `matrix for image ${pose.imagefile} has p: ${pos.x},${pos.y},${pos.z}, rot: ${quat}, scale: ${scale.x},${scale.y},${scale.z}.`)
+      // console.table(pos)
+      pos.x = -pos.x; // flip x coordinate
+    } else {
+      pos.fromArray(pose.location); // location stores as x,y,z coordinates
+      // rotation stored as quaternion (x,y,z,w)
+      quat.x = pose.rotation[0];
+      quat.y = pose.rotation[1];
+      quat.z = pose.rotation[2];
+      quat.w = pose.rotation[3];
+    }
+
     positions.push(pos);
     // create cameras with the settings
     const camera = new THREE.PerspectiveCamera(singleImageFov, 1.0, .5, 10000);
     camera.position.copy(pos);
     camera.applyQuaternion(quat); // Apply Quaternion
 
+    // rotation matrix
+    const R = new THREE.Matrix4().makeRotationFromQuaternion(quat);
+    console.log(R);
 
-    loadImage(imgURL + pose.imagefile);
+    // full camera matrix
+    const cameraMatrix = new THREE.Matrix4().compose(pos, quat, new THREE.Vector3(1, 1, 1));
+    console.log(cameraMatrix);
+
+    //loadImage(imgURL + pose.imagefile);
 
     // load the image and assign the texture to the material
-    const tex = textureLoader.load(imgURL + pose.imagefile);
+    let url = imgURL + pose.imagefile;
+    url = url.replace('.tiff', '.png');
+    const tex = textureLoader.load(url);
     const singleImageMaterial = createProjectiveMaterial(camera, tex);
     singleImageMaterials.push(singleImageMaterial);
-    dem.material = singleImageMaterial;
+    if (dem) {
+      dem.material = singleImageMaterial;
+    }
 
 
     //console.log(camera.matrix)
     //camera.quaternion.set( quat );
     const helper = new ImagePlaneHelper(camera);
     scene.add(helper);
-    console.log(helper.matrix);
+    //console.log(helper.matrix);
     singleImages.push(camera);
     scene.add(camera);
   }
@@ -204,6 +232,7 @@ loader.load(
     let wireframe = new THREE.Mesh(dem.geometry, wireframeMaterial);
     dem.add(wireframe);
     scene.add(dem); // */
+    dem.position.z = settings.focus;
     sceneGeometries.push(dem);
   },
   // called when loading is in progresses
@@ -224,7 +253,7 @@ let stats;
 let scene, renderer, dem;
 let singleImages = new Array();
 let singleImageMaterials = new Array();
-let settings = { view: 0 };
+let settings = { view: 0, focus: -9 };
 let annotations;
 let toggle = 0.0;
 let clock;
@@ -377,8 +406,16 @@ function init() {
   gui.addColor({ color: `#${bgColor.getHexString()}` }, 'color').onChange(function (color) {
     bgColor.set(color);
   });
-  gui.add(settings, 'view', 0, 9/*singleImageMaterials.length - 1*/).onChange(function (value) {
-    dem.material = singleImageMaterials[Math.round(value)];
+  gui.add(settings, 'view', 0, 100/*singleImageMaterials.length - 1*/).onChange(function (value) {
+    if (Math.round(value) < singleImageMaterials.length) {
+      dem.material = singleImageMaterials[Math.round(value)];
+    }
+    else {
+      settings.view = singleImageMaterials.length - 1;
+    }
+  });
+  gui.add(settings, 'focus', -100, 100).onChange(function (value) {
+    dem.position.z = value;
   });
   addCameraGUI(gui, views['left'].camera, 'left camera');
   addCameraGUI(gui, views['right'].camera, 'right camera');
