@@ -17,6 +17,9 @@ import { Object3DAnnotation as Annotation } from './modules/text.js'
 import { ImagePlaneHelper } from './modules/ImagePlaneHelper.js'
 import { EpiPlaneHelper } from './modules/EpiPlaneHelper.js'
 
+import { markdownTable } from 'https://cdn.skypack.dev/markdown-table@3?dts'
+
+
 /*
 // # F0 Scene ##
 const imgURL = "./data/F0/images_ldr/";
@@ -107,6 +110,7 @@ fetchPosesJSON(poseURL).then(poses => {
   //console.log(poses);
   if (!('images' in poses)) { console.log(`An error happened when loading JSON poses. Property images is not present.`); }
   const positions = new Array();
+  const debugTable = [['image', 'x', 'y', 'z', 'rotX', 'rotY', 'rotZ']];
   for (const pose of poses.images) {
 
     const useLegacy = !(pose.hasOwnProperty('location') && pose.hasOwnProperty('rotation'));
@@ -137,6 +141,12 @@ fetchPosesJSON(poseURL).then(poses => {
       quat.w = pose.rotation[3];
     }
 
+    // debug
+    {
+      const euler = new THREE.Euler().setFromQuaternion(quat, 'ZYX'); // XYZ in Blender, inverse here!
+      debugTable.push([pose.imagefile, Math.round(pos.x * 100) / 100, Math.round(pos.y * 100) / 100, Math.round(pos.z * 100) / 100, Math.round(THREE.MathUtils.radToDeg(euler.x)), Math.round(THREE.MathUtils.radToDeg(euler.y)), Math.round(THREE.MathUtils.radToDeg(euler.z))]);
+
+    }
     positions.push(pos);
     // create cameras with the settings
     const camera = new THREE.PerspectiveCamera(singleImageFov, 1.0, .5, 10000);
@@ -173,6 +183,7 @@ fetchPosesJSON(poseURL).then(poses => {
     scene.add(camera);
   }
   console.table(positions);
+  console.log(markdownTable(debugTable));
 });
 
 // instantiate a texture loader
