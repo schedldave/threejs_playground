@@ -10,3 +10,7 @@ If you want to use the scene with the LFR application [https://github.com/schedl
 ```
 LFR.exe --fov 60 --pose ".\data\debug_scene\poses.json" --img .\data\debug_scene\  -z 9
 ```
+or
+```
+LFR.exe --fov 60 --pose ".\data\debug_scene\blender_poses.json" --img .\data\debug_scene\  -z 9 --dem ./data/zero_plane.obj
+```
