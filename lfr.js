@@ -11,571 +11,246 @@ import { OBJLoader } from 'https://cdn.skypack.dev/three@0.130.1/examples/jsm/lo
 //import * as THREE from 'three'
 
 // internal (has some problems!)
-  // import * as THREE from './libs/three/three.module.js'
-  // import {OrbitControls} from './libs/three/examples/jsm/controls/OrbitControls.js';
-import {Object3DAnnotation as Annotation} from './modules/text.js'
-import {ImagePlaneHelper} from './modules/ImagePlaneHelper.js'
-import {EpiPlaneHelper} from './modules/EpiPlaneHelper.js'
+// import * as THREE from './libs/three/three.module.js'
+// import {OrbitControls} from './libs/three/examples/jsm/controls/OrbitControls.js';
+import { Object3DAnnotation as Annotation } from './modules/text.js'
+import { ImagePlaneHelper } from './modules/ImagePlaneHelper.js'
+import { EpiPlaneHelper } from './modules/EpiPlaneHelper.js'
 
-const imgURL = "./data/F0/images_ldr/";
-async function fetchPosesJSON(url = './data/F0/poses/poses.json') {
-  const response = await fetch(url);
-  const poses = await response.json();
-  return poses;
-}
 
-// instantiate a loader
-const imgLoader = new THREE.ImageLoader();
+function flyingCinema() {
+  //const resizableDiv = html`<div style="display: block;overflow: hidden;resize: horizontal;"></div>`;
 
-fetchPosesJSON().then(poses => {
-  poses; // fetched movies
-  console.log(poses);
-  if(!('images' in poses)){ console.log( `An error happened when loading JSON poses. Property images is not present.` ); }
-  const positions = new Array();
-  for(const pose of poses.images){
-    loadImage( imgURL + pose.imagefile );
-    // matrix
-    const M = pose.M3x4
-    const matrix = new THREE.Matrix4();
-    matrix.set(
-      M[0][0], M[0][1], M[0][2], M[0][3],
-      M[1][0], M[1][1], M[1][2], M[1][3],
-      M[2][0], M[2][1], M[2][2], M[2][3],
-            0,       0,       0,       1
-    );
-    let pos = new THREE.Vector3(); let quat = new THREE.Quaternion(); let scale = new THREE.Vector3();
-    matrix.decompose(pos,quat,scale);
-    //console.log( `matrix for image ${pose.imagefile} has p: ${pos.x},${pos.y},${pos.z}, rot: ${quat}, scale: ${scale.x},${scale.y},${scale.z}.`)
-    // console.table(pos)
-    positions.push(pos);
-    // create cameras with the settings
-    const camera = new THREE.PerspectiveCamera(singleImageFov, 1.0, .5, 10000);
-    camera.position.copy( pos );
-    camera.applyQuaternion(quat); // Apply Quaternion
+  //const canvas = html`<canvas id="c" style="width: 100%; height: 500px;"></canvas>`;
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setClearColor(0x202020);
 
-    console.log(camera.matrix)
-    //camera.quaternion.set( quat );
-    const helper = new ImagePlaneHelper(camera);
-    scene.add(helper);
-    console.log(helper.matrix);
-    singleImages.push(camera);
-    scene.add(camera);
-  }
-  console.table(positions);
-});
+  const clock = new THREE.Clock();
+  var time = 0;
+  var rotation = THREE.Math.degToRad(15);
 
-function loadImage(url){
-  // load a image resource
-  imgLoader.load(
-    // resource URL
-    url.replace('.tiff','.png'),
-    // onLoad callback
-    function ( image ) {
-      // use the image, e.g. draw part of it on a canvas
-      const canvas = document.createElement( 'canvas' );
-      const context = canvas.getContext( '2d' );
-      context.drawImage( image, 0, 0 );
-      //document.body.append(canvas);
-      //console.count( `Image loaded!` );
-    },
-    // onProgress callback currently not supported
-    undefined,
-    // onError callback
-    function () {
-      console.log( `An error happened when loading ${url}` );
-    }
+  const scene = new THREE.Scene();
+
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    2, //default: will be computed later
+    0.01,
+    1000
   );
-}
+  camera.position.set(2, 1, 2).setLength(15);
 
-// instantiate a loader
-const loader = new OBJLoader();
-const demURL = './data/F0/DEM/dem.obj';
+  var videoTex = null;
+  { // canvas texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
 
-// load a resource
-loader.load(
-	// resource URL
-	demURL,
-	// called when resource is loaded
-	function ( object ) {
-    dem = object.children[0];
-    dem.scale.fromArray([1,1,-1]);
-    //console.log(dem)
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xffffff,
-      flatShading: true,
-      vertexColors: false,
-      shininess: 0,
-      side:  THREE.DoubleSide
-    });
-  
-    const wireframeMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      wireframe: true,
-      transparent: true
-    });
-  
-    dem.material = material;
-    //console.log(dem.geometry);
-    let wireframe = new THREE.Mesh(dem.geometry, wireframeMaterial);
-    dem.add(wireframe);
-		scene.add( dem ); // */
-	},
-	// called when loading is in progresses
-	function ( xhr ) {	},
-	// called when loading has errors
-	function ( error ) {
-		console.log( `An error happened when loading ${demURL}` );
-    //console.log(error);
-	}
-);
+    const context = canvas.getContext('2d');
+    const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
+    gradient.addColorStop(0.1, 'rgba(1,0,0,0.5)');
+    gradient.addColorStop(1, 'rgba(0,0,1,0)');
 
-//let json = require('./data/F0/poses/poses.json');
-//console.log(json, 'the json obj');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
 
+    videoTex = new THREE.CanvasTexture(canvas);
+  }
 
-let stats;
+  const controls = new OrbitControls(camera, renderer.domElement);
 
-let scene, renderer, dem;
-let singleImages = new Array();
-const singleImageFov = 50; // degrees
-let annotations;
-let toggle = 0.0;
-let clock;
+  var projCamera = new THREE.PerspectiveCamera(35, 1.2, 0.01, 10);
+  projCamera.position.set(0, 0, 9);
+  projCamera.updateMatrixWorld();
 
-const mouse = new THREE.Vector2();
-const raycaster = new THREE.Raycaster();
+  const helper = new THREE.CameraHelper(projCamera);
+  scene.add(helper);
 
-let sceneGeometries = [];
-let intersectionSphere;
-let epiPlane; // epipolar plane
+  const screen = new THREE.Mesh(
+    new THREE.BoxBufferGeometry(16, 9, 2),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        baseColor: {
+          value: new THREE.Color(0xcccccc)
+        },
+        cameraMatrix: {
+          type: 'm4',
+          value: projCamera.matrixWorldInverse
+        },
+        projMatrix: {
+          type: 'm4',
+          value: projCamera.projectionMatrix
+        },
+        myTexture: {
+          value: videoTex
+        }
+      },
+      vertexShader: `
 
-let persistentIntersectionSphere;
-let persistentEpiPlane; // epipolar plane
+        varying vec4 vWorldPos;
 
-let baseline;
+        void main() {
 
-let windowWidth, windowHeight;
-const bgColor = new THREE.Color(0.5, 0.5, 0.7);
+          vWorldPos = modelMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * vWorldPos;
 
-const views = {
-    'overview': {
-    left: 0,
-    bottom: 0,
-    width: 1.0,
-    height: 1.0,
-    background: bgColor,
-    eye: [0, 18, 18],
-    up: [0, 1, 0],
-    fov: 80,
-  },
-  'left': {
-    left:   0,
-    bottom: 0.75,
-    width:  0.25,
-    height: 0.25,
-    background: bgColor,
-    eye: [-10, 2, 10],
-    up: [0, 1, 0],
-    fov: 50,
-  },
-  'right': {
-    left:   0.75,
-    bottom: 0.75,
-    width:  0.25,
-    height: 0.25,
-    background: bgColor,
-    eye: [10, 2, 10],
-    up: [0, 1, 0],
-    fov: 50,
-  }};
+        }
 
-init();
-animate();
+      `,
+      fragmentShader: `
 
-function init() {
+        uniform vec3 baseColor;
+        uniform sampler2D myTexture;
+        uniform mat4 cameraMatrix;
+        uniform mat4 projMatrix;
 
+        varying vec4 vWorldPos;
 
-  scene = new THREE.Scene();
+        void main() {
 
-  clock = new THREE.Clock();
+          vec4 texc = projMatrix * cameraMatrix * vWorldPos;
+          vec2 uv = texc.xy / texc.w / 2.0 + 0.5;
 
-  for (const name in views) {
-    console.log(name)
-    const view = views[name];
-    const camera = new THREE.PerspectiveCamera(view.fov, window.innerWidth / window.innerHeight, .5, name==='overview'?100000:100);
-    camera.position.fromArray(view.eye);
-    camera.up.fromArray(view.up);
-    camera.lookAt(scene.position);
-    view.camera = camera;
-    if(name==='left' || name==='right'){
-        const helper = new ImagePlaneHelper(camera);
-        console.log(helper.matrix)
+          vec3 color = ( max( uv.x, uv.y ) <= 1. && min( uv.x, uv.y ) >= 0. ) ? texture(myTexture, uv).rgb:vec3(1.0);
+          gl_FragColor = vec4(baseColor * color, 1.0);
 
-        view.helper = helper;
-        scene.add(helper);
+        }
+      `,
+      side: THREE.DoubleSide
+    })
+  );
+  screen.position.z = -2;
+  var boxGeom = new THREE.BoxBufferGeometry(16, 9, 2, 16, 9, 2);
+
+  function GridBoxGeometry(geometry, independent) {
+    if (!(geometry instanceof THREE.BoxBufferGeometry)) {
+      console.log(
+        "GridBoxGeometry: the parameter 'geometry' has to be of the type THREE.BoxBufferGeometry"
+      );
+      return geometry;
     }
+    independent = independent !== undefined ? independent : false;
+
+    let newGeometry = new THREE.BoxBufferGeometry();
+    let position = geometry.attributes.position;
+    newGeometry.attributes.position =
+      independent === false ? position : position.clone();
+
+    let segmentsX = geometry.parameters.widthSegments || 1;
+    let segmentsY = geometry.parameters.heightSegments || 1;
+    let segmentsZ = geometry.parameters.depthSegments || 1;
+
+    let startIndex = 0;
+    let indexSide1 = indexSide(segmentsZ, segmentsY, startIndex);
+    startIndex += (segmentsZ + 1) * (segmentsY + 1);
+    let indexSide2 = indexSide(segmentsZ, segmentsY, startIndex);
+    startIndex += (segmentsZ + 1) * (segmentsY + 1);
+    let indexSide3 = indexSide(segmentsX, segmentsZ, startIndex);
+    startIndex += (segmentsX + 1) * (segmentsZ + 1);
+    let indexSide4 = indexSide(segmentsX, segmentsZ, startIndex);
+    startIndex += (segmentsX + 1) * (segmentsZ + 1);
+    let indexSide5 = indexSide(segmentsX, segmentsY, startIndex);
+    startIndex += (segmentsX + 1) * (segmentsY + 1);
+    let indexSide6 = indexSide(segmentsX, segmentsY, startIndex);
+
+    let fullIndices = [];
+    fullIndices = fullIndices.concat(indexSide1);
+    fullIndices = fullIndices.concat(indexSide2);
+    fullIndices = fullIndices.concat(indexSide3);
+    fullIndices = fullIndices.concat(indexSide4);
+    fullIndices = fullIndices.concat(indexSide5);
+    fullIndices = fullIndices.concat(indexSide6);
+
+    newGeometry.setIndex(fullIndices);
+
+    function indexSide(x, y, shift) {
+      let indices = [];
+      for (let i = 0; i < y + 1; i++) {
+        let index11 = 0;
+        let index12 = 0;
+        for (let j = 0; j < x; j++) {
+          index11 = (x + 1) * i + j;
+          index12 = index11 + 1;
+          let index21 = index11;
+          let index22 = index11 + (x + 1);
+          indices.push(shift + index11, shift + index12);
+          if (index22 < (x + 1) * (y + 1) - 1) {
+            indices.push(shift + index21, shift + index22);
+          }
+        }
+        if (index12 + x + 1 <= (x + 1) * (y + 1) - 1) {
+          indices.push(shift + index12, shift + index12 + x + 1);
+        }
+      }
+      return indices;
+    }
+    return newGeometry;
+  }
+  var gridBoxGeom = GridBoxGeometry(boxGeom);
+  var grid = new THREE.LineSegments(
+    gridBoxGeom,
+    new THREE.LineBasicMaterial({
+      color: 0x777777
+    })
+  );
+  screen.add(grid);
+  scene.add(screen);
+
+  // render the scene, as viewed from the camera, onto the canvas
+  function resizeRendererToDisplaySize(renderer) {
+    const canvas = renderer.domElement;
+    const pixelRatio = window.devicePixelRatio;
+    const width = (canvas.clientWidth * pixelRatio) | 0;
+    const height = (canvas.clientHeight * pixelRatio) | 0;
+    const needResize = canvas.width !== width || canvas.height !== height;
+    if (needResize) {
+      renderer.setSize(width, height, false);
+    }
+    return needResize;
   }
 
-
-
-
-  const light = new THREE.DirectionalLight(0xffffff);
-  light.position.set(0, 0, 1);
-  scene.add(light);
-
-  createScene(scene)
-
-  const sphereGeometry = new THREE.SphereGeometry( 0.1, 32, 32 );
-  const sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
-
-	const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
-  sphere.geometry.position = new THREE.Vector3(0);
-	scene.add( sphere );
-  intersectionSphere = sphere;
-
-  renderer = new THREE.WebGLRenderer({
-    antialias: true
-  });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  //container.appendChild( renderer.domElement );
-
-  const controls = new OrbitControls(views['overview'].camera, renderer.domElement);
-  controls.target.set(0, 0, 0);
-  controls.update();
-
-  // create annotiations and add to DOM  
-  annotations= new Array(
-    new Annotation(views['right'].camera, "Right", views['overview'].camera ),
-    new Annotation(views['left'].camera,  "Left",  views['overview'].camera ) );
-
-
-  //console.log(annotations)
-
-  //console.log(views['overview'].camera.projectionMatrix)
-
-  { // create the baseline between the left and right camera
-    const material = new THREE.LineBasicMaterial({
-      color: 0x0000ff
-    });
-    
-    const points = [];
-    points.push( views['right'].camera.position );
-    points.push( views['left'].camera.position );
-    const geometry = new THREE.BufferGeometry().setFromPoints( points );   
-    baseline = new THREE.Line( geometry, material );
-    scene.add( baseline );
-
-    annotations.push( new Annotation(baseline, "Baseline", views['overview'].camera, true ) );
-  }
-
-  { // create epipolar plane
-    const plane = new THREE.Plane().setFromCoplanarPoints( views['right'].camera.position, 
-                                                        views['left'].camera.position, 
-                                                        intersectionSphere.position );
-    epiPlane = new EpiPlaneHelper( plane, 10, 0xffff00 );
-    scene.add( epiPlane );
-    //const geometry = new THREE.PlaneGeometry( 1, 1 );
-    //const material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
-    //const plane = new THREE.Mesh( geometry, material );
-    //scene.add( plane );
-
-    annotations.push( new Annotation(epiPlane, "Epipolar Plane", views['overview'].camera, true ) );
-  }
-
-  //stats = new Stats();
-  //container.appendChild( stats.dom );
-
-  // user interface with dat.GUI [see https://codepen.io/justgooddesign/pen/sbGLC for a deeper example]
-  const gui = new GUI({name: 'Settings', autoPlace: false});
-  gui.addColor({color: `#${bgColor.getHexString()}`},'color').onChange(function(color){
-    bgColor.set(color);
-  });
-  addCameraGUI( gui, views['left'].camera, 'left camera' );
-  addCameraGUI( gui, views['right'].camera, 'right camera' );
-  gui.open();
-  gui.domElement.id = 'gui';
-  gui_container.appendChild(gui.domElement);
-
-  // add event listener
-  document.addEventListener('mousemove', onDocumentMouseMove);
-  document.addEventListener('dblclick', onDocumentDoubleClick);
-
-  // add render canvas to DOM
-  document.body.appendChild(renderer.domElement);
-}
-
-function addCameraGUI( gui, camera, name ){
-  const lgui = gui.addFolder(name);
-  for(const sub of ['position','rotation']){
-    const subgui = lgui.addFolder(sub);
-    for(const s of ['x','y','z']){
-      subgui.add(camera[sub], s).listen();
-  } }
-}
-
-function createScene(scene){
-
-  // shadow
-
-  const canvas = document.createElement('canvas');
-  canvas.width = 128;
-  canvas.height = 128;
-
-  const context = canvas.getContext('2d');
-  const gradient = context.createRadialGradient(canvas.width / 2, canvas.height / 2, 0, canvas.width / 2, canvas.height / 2, canvas.width / 2);
-  gradient.addColorStop(0.1, 'rgba(0,0,0,0.5)');
-  gradient.addColorStop(1, 'rgba(0,0,0,0)');
-
-  context.fillStyle = gradient;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  const shadowTexture = new THREE.CanvasTexture(canvas);
-
-  const shadowMaterial = new THREE.MeshBasicMaterial({
-    map: shadowTexture,
-    transparent: true
-  });
-  const shadowGeo = new THREE.PlaneGeometry(4, 4, 1, 1);
-
-  let shadowMesh;
-
-  shadowMesh = new THREE.Mesh(shadowGeo, shadowMaterial);
-  shadowMesh.position.y = -2.5;
-  shadowMesh.rotation.x = -Math.PI / 2;
-  //scene.add(shadowMesh);
-  const shadowMesh1 = shadowMesh;
-
-  shadowMesh = shadowMesh.clone();
-  //shadowMesh.position.x = -4;
-  //scene.add(shadowMesh);
-  const shadowMesh2 = shadowMesh;
-
-  shadowMesh = shadowMesh.clone();
-  //shadowMesh.position.x = 4.00;
-  //scene.add(shadowMesh);
-  const shadowMesh3 = shadowMesh;
-
-
-  const radius = 2;
-
-  const geometry1 = new THREE.IcosahedronGeometry(radius, 1);
-
-  const count = geometry1.attributes.position.count;
-  geometry1.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
-
-  const geometry2 = new THREE.BoxGeometry(2*radius,2*radius,2*radius);
-  const geometry3 = new THREE.ConeGeometry(2*radius, 5*radius, 10);
-
-  const material = new THREE.MeshPhongMaterial({
-    color: 0xffffff,
-    flatShading: true,
-    vertexColors: false,
-    shininess: 0
-  });
-
-  const wireframeMaterial = new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    wireframe: true,
-    transparent: true
-  });
-
-  let mesh = new THREE.Mesh(geometry1, material);
-  let wireframe = new THREE.Mesh(geometry1, wireframeMaterial);
-  mesh.add(wireframe);
-  mesh.add(shadowMesh1);
-  mesh.position.x = 3.0;
-  //mesh.rotation.x = -1.87;
-  scene.add(mesh);
-
-  sceneGeometries.push(mesh);
-
-  mesh = new THREE.Mesh(geometry2, material);
-  wireframe = new THREE.Mesh(geometry2, wireframeMaterial);
-  mesh.add(wireframe);
-  mesh.add(shadowMesh2);
-  mesh.position.x = -3.00;
-  scene.add(mesh);
-  sceneGeometries.push(mesh);
-
-
-  mesh = new THREE.Mesh(geometry3, material);
-  wireframe = new THREE.Mesh(geometry3, wireframeMaterial);
-  mesh.add(wireframe);
-  mesh.add(shadowMesh3);
-  mesh.position.fromArray([0,3,-9]);
-  scene.add(mesh);
-  sceneGeometries.push(mesh);
-
-}
-
-function onDocumentMouseMove(event) {
-  // calculate mouse position in normalized device coordinates
-	// (-1 to +1) for both components
-	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1; 
-}
-
-function onDocumentDoubleClick(event){
-  //console.count('double click')
-  if(persistentEpiPlane!==undefined){
-    scene.remove(persistentEpiPlane);
-    persistentEpiPlane.dispose();
-  }
-  persistentEpiPlane = new EpiPlaneHelper(epiPlane.plane.clone(),20, 0xffffff );
-  scene.add(persistentEpiPlane);
-
-}
-
-function updateSize() {
-
-  if (windowWidth != window.innerWidth || windowHeight != window.innerHeight) {
-
-    windowWidth = window.innerWidth;
-    windowHeight = window.innerHeight;
-
-    renderer.setSize(windowWidth, windowHeight);
-  }
-
-}
-
-function animate() {
-
-  render();
-  //stats.update();
-
-  requestAnimationFrame(animate);
-
-}
-
-function render() {
-
-  updateSize();
-
-
-
-
-  for (const name in views) {
-    //console.log(name)
-    const view = views[name];
-    const camera = view.camera;
-
-    const left = Math.floor(windowWidth * view.left);
-    const bottom = Math.floor(windowHeight * view.bottom);
-    const width = Math.floor(windowWidth * view.width);
-    const height = Math.floor(windowHeight * view.height);
-
-    renderer.setViewport(left, bottom, width, height);
-    renderer.setScissor(left, bottom, width, height);
-    renderer.setScissorTest(true);
-    renderer.setClearColor(bgColor);
-
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-
-    // render camera helper only when we render the overview view
-    views['left'].helper.visible = views['right'].helper.visible = name === 'overview';
-
+  // animated
+  function render(time) {
+    time *= 0.001; // convert time to seconds
+
+    // Resize
+    /*
+    if (resizeRendererToDisplaySize(renderer)) {
+      const canvas = renderer.domElement;
+      camera.aspect = canvas.clientWidth / canvas.clientHeight;
+      camera.updateProjectionMatrix();
+    }
+    */
+
+    time += clock.getDelta();
+    screen.rotation.y = Math.sin(time * 0.314) * rotation;
+    screen.rotation.x = Math.cos(time * 0.54) * rotation;
+    screen.position.z = Math.sin(time * 0.71) * 4 - 2;
+    screen.position.y = Math.cos(time * 0.44) * 2;
     renderer.render(scene, camera);
+
+    requestAnimationFrame(render);
   }
+  requestAnimationFrame(render);
 
-  // update baseline
-  const points = [ views['right'].camera.position, views['left'].camera.position ];
-  baseline.geometry.setFromPoints( points );   
-
-
-
-
-  
-  // update the picking ray with the camera and mouse position
-  raycaster.setFromCamera( mouse, views['overview'].camera );
-
-  // calculate objects intersecting the picking ray
-  const intersections = raycaster.intersectObjects( sceneGeometries, false );
-  // pick first intersection. should be closest
-  const intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
-
-  // if intersection happened
-  if ( toggle > 0.02 && intersection !== null ) {
-
-    intersectionSphere.position.copy( intersection.point );
-    intersectionSphere.visible = true;
-
-    // update epipolar plane
-    epiPlane.plane.setFromCoplanarPoints( views['right'].camera.position, 
-                            views['left'].camera.position, 
-                            intersectionSphere.position );
-    epiPlane.visible = true;
-    
-    toggle = 0;
-
-  } else if (toggle > 0.02 && intersection === null ) {
-    intersectionSphere.visible = false;
-    epiPlane.visible = false;
-  }
-  toggle += clock.getDelta();
-
-  
-  // update text positions, the text is pure HTML positioned with CSS
-  annotations.forEach(function(txt){ txt.update(); });
-
+  //resizableDiv.append(canvas);
+  //resizableDiv.append(video);
+  return renderer;
 }
 
-//matrixTests();
-function matrixTests(){
-  // compare to: https://colab.research.google.com/github/schedldave/cv2021/blob/main/07_Stereo.ipynb#scrollTo=W2BI9XxZIzWc
+const renderer = flyingCinema();
+document.body.appendChild(renderer.domElement);
 
-  // left K
-  const lK = new THREE.Matrix3().fromArray( 
-    [532.79536562,   0.,         342.45825163,
-       0.,         532.91928338, 233.90060514,
-       0.,           0.,           1.00       ]);
-  
-  // right K
-  const rK = new THREE.Matrix3().fromArray(
-       [537.42795336,   0.,         327.6142018, 
-          0.,         536.94702962, 248.88429309,
-          0.,           0.,           1.        ]);
+/* Flying Cinema Demo 
+  from: >> https://observablehq.com/@severo/texture-projection
 
-  // relative rotation
-  const R = new THREE.Matrix3().fromArray( 
-    [ 0.99998578,  0.00376589,  0.00377484,
-     -0.00374027,  0.99997007, -0.00677299,
-     -0.00380023,  0.00675878,  0.99996994 ]);
-    
-  // relative translation:
-  const t = new THREE.Vector3( -3.32806101, 0.03738435, 0.01469883 );
+  Other helpful resources:
+  - https://stemkoski.github.io/Three.js/Video.html
+  - https://stemkoski.github.io/Three.js/Camera-Texture.html
 
-  /*
-  essential matrix:   [[-8.70916395e-05 -1.44457207e-02  3.74827819e-02]
-    [ 2.05122175e-03  2.25489852e-02  3.32801645e+00]
-    [-2.49359848e-02 -3.32810218e+00  2.23998201e-02]]
+  - https://discourse.threejs.org/t/texture-projection/3224/3
+  - https://jsfiddle.net/t2w6bagq/
 
- fundamental matrix:  [[ 4.67950670e-09  7.76000185e-07 -1.25614932e-03]
-    [-1.10312576e-07 -1.21237904e-06 -9.50369062e-02]
-    [ 7.45984809e-04  9.61289558e-02  1.00000000e+00]]
-  */
-
-    // matrix representation of cross product:
-    let tx = new THREE.Matrix3();
-    tx.set(      0, -t.z,  t.y,
-               t.z,    0, -t.x,
-              -t.y,  t.x,    0 );
-    tx.transpose(); // needs transpose
-
-  
+  - https://rawgit.com/mbredif/three.js/41f1a55998ee717b5957621cdd42d2fe961c0faa/examples/webgl_shadowmap_viewer.html
 
 
-    // compute essential matrix:
-    let E  = new THREE.Matrix3().multiplyMatrices(R,tx); // multiplication order is flipped!
-    let E_ = new THREE.Matrix3().multiplyMatrices(tx.clone().transpose(),R.clone().transpose()).transpose();
-    console.log({E,E_});
-
-    // looks good! so far!
-
-    let F = new THREE.Matrix3().multiplyMatrices(lK.clone().invert(),E).multiply(rK.clone().invert().transpose());
-    console.log({F});
-
-
-
-}
+*/
