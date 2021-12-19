@@ -95,3 +95,4 @@ Thumbs.db
 libs
 # avoid syncing any npm package settings
 package*.json
+*.blend1

@@ -82,15 +82,58 @@ function createProjectiveMaterial(projCamera, tex = null) {
         vec2 uv = texc.xy / texc.w / 2.0 + 0.5;
 
         vec4 color = ( max( uv.x, uv.y ) <= 1. && min( uv.x, uv.y ) >= 0. ) ? vec4(texture(myTexture, uv).rgb, 1.0) : vec4(0.0);
+        //color *= 512.0f; // for debugging
         gl_FragColor = color;
 
       }
     `,
     side: THREE.DoubleSide,
-    transparent: true
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthTest: false, blendDst: THREE.OneFactor, blendSrc: THREE.OneFactor
   })
 
   return material;
+}
+
+
+function createScreenMaterial(texture) {
+  const materialScreen = new THREE.ShaderMaterial({
+
+    uniforms: { "tDiffuse": { value: texture } },
+    vertexShader: `
+      varying vec2 vUv;
+
+			void main() {
+
+				vUv = uv;
+				gl_Position =  vec4( position, 1.0 );
+
+			}
+    `,
+    fragmentShader: `
+      varying vec2 vUv;
+			uniform sampler2D tDiffuse;
+
+			void main() {
+
+				vec4 rgba = texture2D( tDiffuse, vUv ).rgba;
+        if(rgba.a>0.000001){
+          gl_FragColor = vec4(rgba.rgb/rgba.a, 1.0);
+        }else{
+          gl_FragColor = vec4(0.0);
+        }
+
+			}
+    `,
+
+    depthWrite: false,
+    transparent: true,
+    blending: THREE.NormalBlending,
+
+  });
+
+  return materialScreen;
 }
 
 
@@ -241,10 +284,12 @@ loader.load(
     //dem
     //console.log(dem.geometry);
     let wireframe = new THREE.Mesh(dem.geometry, wireframeMaterial);
-    dem.add(wireframe);
+    //dem.add(wireframe);
     scene.add(dem); // */
     dem.position.z = settings.focus;
     sceneGeometries.push(dem);
+
+    rtScene.add(dem);
   },
   // called when loading is in progresses
   function (xhr) { },
@@ -264,7 +309,12 @@ let stats;
 let scene, renderer, dem;
 let singleImages = new Array();
 let singleImageMaterials = new Array();
-let settings = { view: 0, focus: -9 };
+let settings = {
+  view: 0,
+  focus: -9,
+  numIntegral: 1,
+  hover: [0, 128, 1000, 0.3], // RGB with alpha (for debugging)
+};
 let annotations;
 let toggle = 0.0;
 let clock;
@@ -278,6 +328,9 @@ let epiPlane; // epipolar plane
 
 let persistentIntersectionSphere;
 let persistentEpiPlane; // epipolar plane
+
+let rtTarget; // render target
+let rtScene; // render-target scene
 
 let baseline;
 
@@ -324,6 +377,7 @@ function init() {
 
 
   scene = new THREE.Scene();
+  rtScene = new THREE.Scene();
 
   clock = new THREE.Clock();
 
@@ -360,7 +414,8 @@ function init() {
   intersectionSphere = sphere;
 
   renderer = new THREE.WebGLRenderer({
-    antialias: true
+    antialias: true,
+    alpha: true
   });
   renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -369,6 +424,20 @@ function init() {
   const controls = new OrbitControls(views['overview'].camera, renderer.domElement);
   controls.target.set(0, 0, 0);
   controls.update();
+
+  // render Target
+  rtTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter, format: THREE.RGBAFormat, type: THREE.FloatType });
+
+  //const boxMaterial = new THREE.MeshBasicMaterial({ map: rtTarget.texture, depthTest: false, blendDst: THREE.OneFactor, blendSrc: THREE.OneFactor });
+  //const boxGeometry2 = new THREE.BoxGeometry(5, 5, 5);
+  //const mainBoxObject = new THREE.Mesh(boxGeometry2, boxMaterial);
+  //scene.add(mainBoxObject);
+
+  const plane = new THREE.PlaneGeometry(2, 2);
+  const screenMaterial = createScreenMaterial(rtTarget.texture);
+  const quad = new THREE.Mesh(plane, screenMaterial);
+  scene.add(quad);
+
 
   // create annotiations and add to DOM  
   annotations = new Array(
@@ -414,6 +483,7 @@ function init() {
 
   // user interface with dat.GUI [see https://codepen.io/justgooddesign/pen/sbGLC for a deeper example]
   const gui = new GUI({ name: 'Settings', autoPlace: false });
+  gui.addColor(settings, 'hover').listen();
   gui.addColor({ color: `#${bgColor.getHexString()}` }, 'color').onChange(function (color) {
     bgColor.set(color);
   });
@@ -423,6 +493,14 @@ function init() {
     }
     else {
       settings.view = singleImageMaterials.length - 1;
+    }
+  });
+  gui.add(settings, 'numIntegral', 0, 100).onChange(function (value) {
+    if (Math.round(value) < singleImageMaterials.length) {
+      settings.numIntegral = Math.round(value);
+    }
+    else {
+      settings.numIntegral = singleImageMaterials.length - 1;
     }
   });
   gui.add(settings, 'focus', -100, 100).onChange(function (value) {
@@ -492,9 +570,24 @@ function animate() {
 }
 
 function render() {
+  renderer.autoClear = false;
+
 
   updateSize();
 
+  renderer.setRenderTarget(rtTarget);
+  renderer.setClearColor(new THREE.Color(0), 0);
+
+  renderer.clear();
+  const cam = views['overview'].camera;
+
+  for (let i = 0; i < Math.min(settings.numIntegral, singleImageMaterials.length); i++) {
+    dem.material = singleImageMaterials[i];
+    renderer.render(rtScene, cam);
+  }
+
+
+  renderer.setRenderTarget(null);
 
 
 
@@ -511,7 +604,8 @@ function render() {
     renderer.setViewport(left, bottom, width, height);
     renderer.setScissor(left, bottom, width, height);
     renderer.setScissorTest(true);
-    renderer.setClearColor(bgColor);
+    renderer.setClearColor(bgColor, 1);
+    renderer.clear();
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -565,6 +659,13 @@ function render() {
 
   // update text positions, the text is pure HTML positioned with CSS
   annotations.forEach(function (txt) { txt.update(); });
+
+  const read = new Float32Array(4);
+  //renderer.readRenderTargetPixels(rtTarget, mouse.x, mouse.y, 1, 1, read);
+  renderer.readRenderTargetPixels(rtTarget, rtTarget.width / 2, rtTarget.height / 2, 1, 1, read);
+  settings.hover = [read[0], read[1], read[2], read[3]];
+
+  console.log('r:' + read[0] + 'g:' + read[1] + 'b:' + read[2] + 'a:' + read[3]);
 
 }
 
