@@ -10,11 +10,11 @@ import { GUI } from 'https://cdn.skypack.dev/three@0.130.1/examples/jsm/libs/dat
 //import * as THREE from 'three'
 
 // internal (has some problems!)
-  // import * as THREE from './libs/three/three.module.js'
-  // import {OrbitControls} from './libs/three/examples/jsm/controls/OrbitControls.js';
-import {Object3DAnnotation as Annotation} from './modules/text.js'
-import {ImagePlaneHelper} from './modules/ImagePlaneHelper.js'
-import {EpiPlaneHelper} from './modules/EpiPlaneHelper.js'
+// import * as THREE from './libs/three/three.module.js'
+// import {OrbitControls} from './libs/three/examples/jsm/controls/OrbitControls.js';
+import { Object3DAnnotation as Annotation } from './modules/text.js'
+import { ImagePlaneHelper } from './modules/ImagePlaneHelper.js'
+import { EpiPlaneHelper } from './modules/EpiPlaneHelper.js'
 
 
 let stats;
@@ -37,42 +37,81 @@ let persistentEpiPlane; // epipolar plane
 let baseline;
 
 let windowWidth, windowHeight;
-const bgColor = new THREE.Color(0.5, 0.5, 0.7);
+const bgColor = new THREE.Color(0.6, 0.6, 0.8);
+const leftRightBgColor = new THREE.Color(0.6, 0.9, 0.6);
+
+const urlParams = new URLSearchParams(window.location.search);
+let presetName = urlParams.get('preset');
+if (presetName === null) { presetName = "a" };
+console.log(presetName);
+
+const lrViewSize = { 'x': 0.35, 'y': 0.4 };
 
 const views = {
-    'overview': {
+  'overview': {
     left: 0,
     bottom: 0,
     width: 1.0,
     height: 1.0,
-    background: bgColor,
+    bgColor: bgColor,
     eye: [0, 18, 18],
     up: [0, 1, 0],
     fov: 80,
   },
   'left': {
-    left:   0,
-    bottom: 0.75,
-    width:  0.25,
-    height: 0.25,
-    background: bgColor,
+    left: 0,
+    bottom: 1 - lrViewSize.y,
+    width: lrViewSize.x,
+    height: lrViewSize.y,
+    bgColor: leftRightBgColor,
     eye: [-10, 2, 10],
     up: [0, 1, 0],
     fov: 50,
   },
   'right': {
-    left:   0.75,
-    bottom: 0.75,
-    width:  0.25,
-    height: 0.25,
-    background: bgColor,
+    left: 1 - lrViewSize.x,
+    bottom: 1 - lrViewSize.y,
+    width: lrViewSize.x,
+    height: lrViewSize.y,
+    bgColor: leftRightBgColor,
     eye: [10, 2, 10],
     up: [0, 1, 0],
     fov: 50,
-  }};
+  }
+};
 
 init();
+updatePreset(presetName);
 animate();
+
+
+function setLeftRightCamera(leftPos, rightPos) {
+  let camera = views.left.camera;
+  camera.position.fromArray(leftPos);
+  //camera.up.fromArray(view.up);
+  camera.lookAt(scene.position);
+  camera = views.right.camera;
+  camera.position.fromArray(rightPos);
+  //camera.up.fromArray(view.up);
+  camera.lookAt(scene.position);
+}
+
+function updatePreset(presetName) {
+  switch (presetName) {
+    case "a":
+      setLeftRightCamera([-10, 2, 10], [10, 2, 10]);
+      break;
+    case "b":
+      setLeftRightCamera([-10, 2, 10], [6, 2, 5]);
+      break;
+    case "c":
+      setLeftRightCamera([-2, 2, 10], [2, 2, 10]);
+      break;
+    case "d":
+      setLeftRightCamera([0, 2, 10], [0, 2.5, 6]);
+      break;
+  }
+}
 
 function init() {
 
@@ -84,17 +123,22 @@ function init() {
   for (const name in views) {
     console.log(name)
     const view = views[name];
-    const camera = new THREE.PerspectiveCamera(view.fov, window.innerWidth / window.innerHeight, .5, name==='overview'?100000:100);
+    const camera = new THREE.PerspectiveCamera(view.fov, window.innerWidth / window.innerHeight, .5, name === 'overview' ? 100000 : 100);
     camera.position.fromArray(view.eye);
     camera.up.fromArray(view.up);
     camera.lookAt(scene.position);
     view.camera = camera;
-    if(name==='left' || name==='right'){
-        const helper = new ImagePlaneHelper(camera);
-        console.log(helper.matrix)
+    scene.add(camera);
+    if (name === 'left' || name === 'right') {
+      const helper = new ImagePlaneHelper(camera);
+      console.log(helper.matrix)
 
-        view.helper = helper;
-        scene.add(helper);
+      view.helper = helper;
+      scene.add(helper);
+
+      // add a red dot at the camera center
+      const cameraDot = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+      camera.add(cameraDot);
     }
   }
 
@@ -107,12 +151,12 @@ function init() {
 
   createScene(scene)
 
-  const sphereGeometry = new THREE.SphereGeometry( 0.1, 32, 32 );
-  const sphereMaterial = new THREE.MeshBasicMaterial( { color: 0xff0000 } );
+  const sphereGeometry = new THREE.SphereGeometry(0.1, 32, 32);
+  const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0x55ffff });
 
-	const sphere = new THREE.Mesh( sphereGeometry, sphereMaterial );
+  const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
   sphere.geometry.position = new THREE.Vector3(0);
-	scene.add( sphere );
+  scene.add(sphere);
   intersectionSphere = sphere;
 
   renderer = new THREE.WebGLRenderer({
@@ -127,9 +171,9 @@ function init() {
   controls.update();
 
   // create annotiations and add to DOM  
-  annotations= new Array(
-    new Annotation(views['right'].camera, "Right", views['overview'].camera ),
-    new Annotation(views['left'].camera,  "Left",  views['overview'].camera ) );
+  annotations = new Array(
+    new Annotation(views['right'].camera, "Right", views['overview'].camera),
+    new Annotation(views['left'].camera, "Left", views['overview'].camera));
 
 
   //console.log(annotations)
@@ -138,44 +182,47 @@ function init() {
 
   { // create the baseline between the left and right camera
     const material = new THREE.LineBasicMaterial({
-      color: 0x0000ff
+      color: 0x0000ff,
+      linewidth: 2
     });
-    
-    const points = [];
-    points.push( views['right'].camera.position );
-    points.push( views['left'].camera.position );
-    const geometry = new THREE.BufferGeometry().setFromPoints( points );   
-    baseline = new THREE.Line( geometry, material );
-    scene.add( baseline );
 
-    annotations.push( new Annotation(baseline, "Baseline", views['overview'].camera, true ) );
+    const points = [];
+    points.push(views['right'].camera.position);
+    points.push(views['left'].camera.position);
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    baseline = new THREE.Line(geometry, material);
+    scene.add(baseline);
+
+    annotations.push(new Annotation(baseline, "Baseline", views['overview'].camera, true));
   }
 
   { // create epipolar plane
-    const plane = new THREE.Plane().setFromCoplanarPoints( views['right'].camera.position, 
-                                                        views['left'].camera.position, 
-                                                        intersectionSphere.position );
-    epiPlane = new EpiPlaneHelper( plane, 10, 0xffff00 );
-    scene.add( epiPlane );
+    const plane = new THREE.Plane().setFromCoplanarPoints(views['right'].camera.position,
+      views['left'].camera.position,
+      intersectionSphere.position);
+    epiPlane = new EpiPlaneHelper(plane, 10, 0xffff00);
+    scene.add(epiPlane);
     //const geometry = new THREE.PlaneGeometry( 1, 1 );
     //const material = new THREE.MeshBasicMaterial( {color: 0xffff00, side: THREE.DoubleSide} );
     //const plane = new THREE.Mesh( geometry, material );
     //scene.add( plane );
 
-    annotations.push( new Annotation(epiPlane, "Epipolar Plane", views['overview'].camera, true ) );
+    annotations.push(new Annotation(epiPlane, "Epipolar Plane", views['overview'].camera, true));
   }
 
   //stats = new Stats();
   //container.appendChild( stats.dom );
 
   // user interface with dat.GUI [see https://codepen.io/justgooddesign/pen/sbGLC for a deeper example]
-  const gui = new GUI({name: 'Settings', autoPlace: false});
-  gui.addColor({color: `#${bgColor.getHexString()}`},'color').onChange(function(color){
+  const gui = new GUI({ name: 'Settings', autoPlace: false });
+  const guiControls = { 'presets': 'a' };
+  gui.add(guiControls, 'presets', ['a', 'b', 'c', 'd']).onChange(updatePreset);
+  gui.addColor({ color: `#${bgColor.getHexString()}` }, 'color').onChange(function (color) {
     bgColor.set(color);
   });
-  addCameraGUI( gui, views['left'].camera, 'left camera' );
-  addCameraGUI( gui, views['right'].camera, 'right camera' );
-  gui.open();
+  addCameraGUI(gui, views['left'].camera, 'left camera');
+  addCameraGUI(gui, views['right'].camera, 'right camera');
+  gui.close();
   gui.domElement.id = 'gui';
   gui_container.appendChild(gui.domElement);
 
@@ -187,16 +234,17 @@ function init() {
   document.body.appendChild(renderer.domElement);
 }
 
-function addCameraGUI( gui, camera, name ){
+function addCameraGUI(gui, camera, name) {
   const lgui = gui.addFolder(name);
-  for(const sub of ['position','rotation']){
+  for (const sub of ['position', 'rotation']) {
     const subgui = lgui.addFolder(sub);
-    for(const s of ['x','y','z']){
+    for (const s of ['x', 'y', 'z']) {
       subgui.add(camera[sub], s).listen();
-  } }
+    }
+  }
 }
 
-function createScene(scene){
+function createScene(scene) {
 
   // shadow
 
@@ -246,8 +294,8 @@ function createScene(scene){
   const count = geometry1.attributes.position.count;
   geometry1.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
 
-  const geometry2 = new THREE.BoxGeometry(2*radius,2*radius,2*radius);
-  const geometry3 = new THREE.ConeGeometry(2*radius, 5*radius, 10);
+  const geometry2 = new THREE.BoxGeometry(2 * radius, 2 * radius, 2 * radius);
+  const geometry3 = new THREE.ConeGeometry(2 * radius, 5 * radius, 10);
 
   const material = new THREE.MeshPhongMaterial({
     color: 0xffffff,
@@ -285,7 +333,7 @@ function createScene(scene){
   wireframe = new THREE.Mesh(geometry3, wireframeMaterial);
   mesh.add(wireframe);
   mesh.add(shadowMesh3);
-  mesh.position.fromArray([0,3,-9]);
+  mesh.position.fromArray([0, 3, -9]);
   scene.add(mesh);
   sceneGeometries.push(mesh);
 
@@ -293,18 +341,27 @@ function createScene(scene){
 
 function onDocumentMouseMove(event) {
   // calculate mouse position in normalized device coordinates
-	// (-1 to +1) for both components
-	mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-	mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1; 
+  // (-1 to +1) for both components
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
 }
 
-function onDocumentDoubleClick(event){
+function computeEpiPlaneHelperSize() {
+  //const baseLineVec = new THREE.Vector3().subVectors(views['right'].camera.position, views['left'].camera.position).length();
+  const interCameraLeft = new THREE.Vector3().subVectors(views['left'].camera.position, epiPlane.position).length();
+  const interCameraRight = new THREE.Vector3().subVectors(views['right'].camera.position, epiPlane.position).length();
+
+  return 2 * Math.max(interCameraLeft, interCameraRight);
+}
+
+function onDocumentDoubleClick(event) {
   //console.count('double click')
-  if(persistentEpiPlane!==undefined){
+  if (persistentEpiPlane !== undefined) {
     scene.remove(persistentEpiPlane);
     persistentEpiPlane.dispose();
   }
-  persistentEpiPlane = new EpiPlaneHelper(epiPlane.plane.clone(),20, 0xffffff );
+
+  persistentEpiPlane = new EpiPlaneHelper(epiPlane.plane.clone(), computeEpiPlaneHelperSize(), 0xff00ff);
   scene.add(persistentEpiPlane);
 
 }
@@ -350,7 +407,7 @@ function render() {
     renderer.setViewport(left, bottom, width, height);
     renderer.setScissor(left, bottom, width, height);
     renderer.setScissorTest(true);
-    renderer.setClearColor(bgColor);
+    renderer.setClearColor(view.bgColor);
 
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -358,105 +415,107 @@ function render() {
     // render camera helper only when we render the overview view
     views['left'].helper.visible = views['right'].helper.visible = name === 'overview';
 
+    renderer.setClearColor(view.bgColor);
     renderer.render(scene, camera);
   }
 
   // update baseline
-  const points = [ views['right'].camera.position, views['left'].camera.position ];
-  baseline.geometry.setFromPoints( points );   
+  const points = [views['right'].camera.position, views['left'].camera.position];
+  baseline.geometry.setFromPoints(points);
 
 
 
 
-  
+
   // update the picking ray with the camera and mouse position
-  raycaster.setFromCamera( mouse, views['overview'].camera );
+  raycaster.setFromCamera(mouse, views['overview'].camera);
 
   // calculate objects intersecting the picking ray
-  const intersections = raycaster.intersectObjects( sceneGeometries, false );
+  const intersections = raycaster.intersectObjects(sceneGeometries, false);
   // pick first intersection. should be closest
-  const intersection = ( intersections.length ) > 0 ? intersections[ 0 ] : null;
+  const intersection = (intersections.length) > 0 ? intersections[0] : null;
 
   // if intersection happened
-  if ( toggle > 0.02 && intersection !== null ) {
+  if (toggle > 0.02 && intersection !== null) {
 
-    intersectionSphere.position.copy( intersection.point );
+    intersectionSphere.position.copy(intersection.point);
     intersectionSphere.visible = true;
 
     // update epipolar plane
-    epiPlane.plane.setFromCoplanarPoints( views['right'].camera.position, 
-                            views['left'].camera.position, 
-                            intersectionSphere.position );
+    epiPlane.plane.setFromCoplanarPoints(views['right'].camera.position,
+      views['left'].camera.position,
+      intersectionSphere.position);
+    epiPlane.size = computeEpiPlaneHelperSize() * 3 / 4;
     epiPlane.visible = true;
-    
+
     toggle = 0;
 
-  } else if (toggle > 0.02 && intersection === null ) {
+  } else if (toggle > 0.02 && intersection === null) {
     intersectionSphere.visible = false;
     epiPlane.visible = false;
   }
   toggle += clock.getDelta();
 
-  
+
   // update text positions, the text is pure HTML positioned with CSS
-  annotations.forEach(function(txt){ txt.update(); });
+  annotations.forEach(function (txt) { txt.update(); });
 
 }
 
 //matrixTests();
-function matrixTests(){
+function matrixTests() {
   // compare to: https://colab.research.google.com/github/schedldave/cv2021/blob/main/07_Stereo.ipynb#scrollTo=W2BI9XxZIzWc
 
   // left K
-  const lK = new THREE.Matrix3().fromArray( 
-    [532.79536562,   0.,         342.45825163,
-       0.,         532.91928338, 233.90060514,
-       0.,           0.,           1.00       ]);
-  
+  const lK = new THREE.Matrix3().fromArray(
+    [532.79536562, 0., 342.45825163,
+      0., 532.91928338, 233.90060514,
+      0., 0., 1.00]);
+
   // right K
   const rK = new THREE.Matrix3().fromArray(
-       [537.42795336,   0.,         327.6142018, 
-          0.,         536.94702962, 248.88429309,
-          0.,           0.,           1.        ]);
+    [537.42795336, 0., 327.6142018,
+      0., 536.94702962, 248.88429309,
+      0., 0., 1.]);
 
   // relative rotation
-  const R = new THREE.Matrix3().fromArray( 
-    [ 0.99998578,  0.00376589,  0.00377484,
-     -0.00374027,  0.99997007, -0.00677299,
-     -0.00380023,  0.00675878,  0.99996994 ]);
-    
+  const R = new THREE.Matrix3().fromArray(
+    [0.99998578, 0.00376589, 0.00377484,
+      -0.00374027, 0.99997007, -0.00677299,
+      -0.00380023, 0.00675878, 0.99996994]);
+
   // relative translation:
-  const t = new THREE.Vector3( -3.32806101, 0.03738435, 0.01469883 );
+  const t = new THREE.Vector3(-3.32806101, 0.03738435, 0.01469883);
 
   /*
   essential matrix:   [[-8.70916395e-05 -1.44457207e-02  3.74827819e-02]
     [ 2.05122175e-03  2.25489852e-02  3.32801645e+00]
     [-2.49359848e-02 -3.32810218e+00  2.23998201e-02]]
-
+ 
  fundamental matrix:  [[ 4.67950670e-09  7.76000185e-07 -1.25614932e-03]
     [-1.10312576e-07 -1.21237904e-06 -9.50369062e-02]
     [ 7.45984809e-04  9.61289558e-02  1.00000000e+00]]
   */
 
-    // matrix representation of cross product:
-    let tx = new THREE.Matrix3();
-    tx.set(      0, -t.z,  t.y,
-               t.z,    0, -t.x,
-              -t.y,  t.x,    0 );
-    tx.transpose(); // needs transpose
-
-  
+  // matrix representation of cross product:
+  let tx = new THREE.Matrix3();
+  tx.set(0, -t.z, t.y,
+    t.z, 0, -t.x,
+    -t.y, t.x, 0);
+  tx.transpose(); // needs transpose
 
 
-    // compute essential matrix:
-    let E  = new THREE.Matrix3().multiplyMatrices(R,tx); // multiplication order is flipped!
-    let E_ = new THREE.Matrix3().multiplyMatrices(tx.clone().transpose(),R.clone().transpose()).transpose();
-    console.log({E,E_});
 
-    // looks good! so far!
 
-    let F = new THREE.Matrix3().multiplyMatrices(lK.clone().invert(),E).multiply(rK.clone().invert().transpose());
-    console.log({F});
+  // compute essential matrix:
+  let E = new THREE.Matrix3().multiplyMatrices(R, tx); // multiplication order is flipped!
+  let E_ = new THREE.Matrix3().multiplyMatrices(tx.clone().transpose(), R.clone().transpose()).transpose();
+  console.log({ E, E_ });
+
+  // looks good! so far!
+
+  let F = new THREE.Matrix3().multiplyMatrices(lK.clone().invert(), E).multiply(rK.clone().invert().transpose());
+  console.log({ F });
 
 
 
