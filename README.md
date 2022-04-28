@@ -1,6 +1,7 @@
-# threejs_playground
+# ThreeJS Epipolar Line Constraint 
 
-Testbed for playing around with [three.js ](https://threejs.org/).
+A small demo showcasing epipolar planes and lines. 
 
-## ToDos
-[ ] presets: parallel cameras, cameras facing each other, one in front one behind, ...
+Some presets for parallel cameras, cameras facing each other, one in front one behind, ...
+
+Implemented with [three.js ](https://threejs.org/).
